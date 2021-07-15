@@ -1,11 +1,12 @@
 package main
 
 import (
-	"fmt"
+	"encoding/json"
 	"github.com/mattermost/mattermost-server/v5/model"
 	"github.com/pkg/errors"
 	"math/rand"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -62,7 +63,12 @@ type Plugin struct {
 
 // ServeHTTP demonstrates a plugin that handles HTTP requests by greeting the world.
 func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Hello, world!")
+	switch path := r.URL.Path; path {
+	case "/hit":
+		break
+	case "/stay":
+		break
+	}
 }
 
 // See https://developers.mattermost.com/extend/plugins/server/reference/
@@ -81,46 +87,67 @@ func (p *Plugin) OnActivate() error {
 func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError){
 	rand.Seed(time.Now().UnixNano())
 	var result = ""
+	var siteURL = p.GetSiteURL()
+	var attachmentMap map[string]interface{} = nil
 	var card1 = playingCards[rand.Intn(len(playingCards))]
 	var card2 = playingCards[rand.Intn(len(playingCards))]
+
 	var score = cards[card1] + cards[card2]
+	var pluginURL = getPluginURL(siteURL)
+	var imgURL = getImgURL(siteURL)
+	var cardTxt = "!["+ card1 + "](" + imgURL + card1 + ".jpg)!["+ card2 +"](" + imgURL + card2 + ".jpg)"
+
+	if score < 21 {
+		result = "**Your score is " + strconv.Itoa(score) + ".**"
+		json.Unmarshal([]byte(getAttachmentJSON(pluginURL, result)), &attachmentMap)
+	}
 	if score == 22 {
 		score = 12
+		result = "**Your score is 12.**"
+		json.Unmarshal([]byte(getAttachmentJSON(pluginURL, result)), &attachmentMap)
 	}
 	if score == 21 {
 		result = "\n**BlackJack. Congratulations, You won!**"
+		cardTxt += result
 	}
 	var cmdResp *model.CommandResponse
 	cmdResp = &model.CommandResponse{
 		ResponseType: model.COMMAND_RESPONSE_TYPE_IN_CHANNEL,
-		Text: "!["+ card1 + "](" + getPluginURL(p.GetSiteURL()) + "/public/jpg-cards/" + card1 + ".jpg)!["+ card2 +"](" + getPluginURL(p.GetSiteURL()) + "/public/jpg-cards/" + card2 + ".jpg)" + result,
+		Text:  cardTxt,
 		Username: bjBot,
-		Props: nil,
+		Props: attachmentMap,
+		IconURL: pluginURL + "/public/jpg-cards/red_joker.jpg",
 	}
 	return cmdResp, nil
 }
 
-func getAttachmentJSON(pluginURL string) string {
+func getAttachmentJSON(pluginURL string, result string) string {
 	return `{
 		"attachments": [
            {
-			 "text": "Hit?",
-			 "integration": {
-				"url": "` + pluginURL + `"/hit",
-				"context": {
-					"action": "hit"
+			 "text": "` + result + `",
+             "actions": [
+               {
+                  "name": "Hit",
+			      "integration": {
+				    "url": "` + pluginURL + `/hit",
+				    "context": {
+					  "action": "hit"
+                    }
+                  }
+              },
+              {
+                 "name": "Stay",
+                 "integration": {
+                     "url": "` + pluginURL + `/stay",
+                     "context": {
+                        "action": "stay"
+                     }
                  }
               }
-		   },
-           {
-             "text": "Stay!",
-             "integration": {
-             "url": "` + pluginURL + `"/stay",
-             "context": {
-                 "action": "stay"
-             }
-           }
-		]
+            ]
+          }
+        ]
 	}`
 }
 
@@ -137,6 +164,10 @@ func getPluginURL(siteURL string) string {
 	return siteURL + "/plugins/com.girishm.mattermost-blackjack"
 }
 
+func getImgURL(siteURL string) string {
+	return siteURL + "/plugins/com.girishm.mattermost-blackjack/public/jpg-cards/"
+}
+
 func createBJCommand(siteURL string) *model.Command {
 	return &model.Command{
 		Trigger:              bjCommand,
@@ -148,5 +179,6 @@ func createBJCommand(siteURL string) *model.Command {
 		DisplayName:          bjBot,
 		Description:          "Blackjack game for Mattermost",
 		URL:                  siteURL,
+		IconURL:              getPluginURL(siteURL) + "/public/jpg-cards/red_joker.jpg",
 	}
 }
