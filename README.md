@@ -1,5 +1,6 @@
 # mattermost-blackjack
 Blackjack game plugin for [Mattermost](https://mattermost.org). Allows single player mode. The objective is to get a [Blackjack](https://en.wikipedia.org/wiki/Blackjack).
+Supports `hit` and `stay` player decisions
 ## Demo
 ![Demo video](public/blackjackDemo.gif) recorded using [Peek](https://github.com/phw/peek).
 ## Installation
