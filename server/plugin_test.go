@@ -1,28 +1,37 @@
 package main
 
 import (
-	"io/ioutil"
-	"net/http"
-	"net/http/httptest"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
-func TestServeHTTP(t *testing.T) {
-	assert := assert.New(t)
-	plugin := Plugin{}
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/", nil)
+func TestCalculateScore(t *testing.T)  {
+	var cardsDealt []string
+	if res := calculateScore(cardsDealt); res != 0 {
+		t.Log("error should be 0, but got", res)
+		t.Fail()
+	}
 
-	plugin.ServeHTTP(nil, w, r)
+	cardsDealt = []string{"ace_of_hearts", "ace_of_spades", "queen_of_hearts"}
+	if res := calculateScore(cardsDealt); res != 12 {
+		t.Log("error should be 12, but got", res)
+		t.Fail()
+	}
 
-	result := w.Result()
-	assert.NotNil(result)
-	defer result.Body.Close()
-	bodyBytes, err := ioutil.ReadAll(result.Body)
-	assert.Nil(err)
-	bodyString := string(bodyBytes)
+	cardsDealt = []string{"ace_of_hearts", "ace_of_spades", "ace_of_clubs", "ace_of_spades"}
+	if res := calculateScore(cardsDealt); res != 14 {
+		t.Log("error should be 14, but got", res)
+		t.Fail()
+	}
 
-	assert.Equal("Hello, world!", bodyString)
+	cardsDealt = []string{"ace_of_hearts", "ace_of_spades", "ace_of_clubs", "ace_of_spades", "queen_of_hearts"}
+	if res := calculateScore(cardsDealt); res != 14 {
+		t.Log("error should be 14, but got", res)
+		t.Fail()
+	}
+
+	cardsDealt = []string{"ace_of_hearts", "ace_of_spades", "queen_of_hearts", "ace_of_clubs", "ace_of_spades"}
+	if res := calculateScore(cardsDealt); res != 14 {
+		t.Log("error should be 14, but got", res)
+		t.Fail()
+	}
 }

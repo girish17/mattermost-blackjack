@@ -15,6 +15,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/mattermost/mattermost-server/v5/model"
 	"github.com/pkg/errors"
 	"io/ioutil"
@@ -123,6 +124,8 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 		}
 		_, _ = p.API.CreatePost(post)
 		break
+	default:
+		fmt.Fprintf(w, "Welcome to Blackjack!")
 	}
 }
 
