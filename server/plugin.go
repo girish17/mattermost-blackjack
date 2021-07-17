@@ -32,6 +32,7 @@ import (
 
 const bjCommand = "blackjack"
 const bjBot = "blackjack-bot"
+var gameOver = false
 var bot = model.Bot{
 	Username:       bjBot,
 	DisplayName:    bjBot,
@@ -84,35 +85,43 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 	}
 	switch path := r.URL.Path; path {
 	case "/hit":
-		var cardIndex = rand.Intn(len(playingCards))
-		dealtCards = append(dealtCards, playingCards[cardIndex])
-		cardTxt += "!["+ playingCards[cardIndex] + "](" + getImgURL(p.GetSiteURL()) + playingCards[cardIndex] + ".jpg)"
-		//remove card from deck
-		playingCards = append(playingCards[:cardIndex], playingCards[cardIndex+1:]...)
-		p.API.LogInfo("Dealt cards: ", dealtCards)
-		score = calculateScore(dealtCards)
-
-		if score > 21 {
-			post.Message = cardTxt + "\n**" + strconv.Itoa(score) + ". Bust! :disappointed: Game Over. Try again - `/blackjack`**"
-			score = 0
-			p.API.CreatePost(post)
-		} else {
-			if score < 21 {
-				post.Message = cardTxt
-				var attachmentMap map[string]interface{}
-				var result = "**Your score is " + strconv.Itoa(score) + ".**"
-				json.Unmarshal([]byte(getAttachmentJSON(getPluginURL(p.GetSiteURL()), result)), &attachmentMap)
-				post.SetProps(attachmentMap)
-				p.API.CreatePost(post)
+		if !gameOver {
+			var cardIndex = rand.Intn(len(playingCards))
+			dealtCards = append(dealtCards, playingCards[cardIndex])
+			cardTxt += "!["+ playingCards[cardIndex] + "](" + getImgURL(p.GetSiteURL()) + playingCards[cardIndex] + ".jpg)"
+			//remove card from deck
+			playingCards = append(playingCards[:cardIndex], playingCards[cardIndex+1:]...)
+			p.API.LogInfo("Dealt cards: ", dealtCards)
+			score = calculateScore(dealtCards)
+			if score > 21 {
+				gameOver = true
+				post.Message = cardTxt + "\n**" + strconv.Itoa(score) + ". Bust! :disappointed: Try again - `/blackjack`**"
+				score = 0
 			} else {
-				post.Message = cardTxt + "\n**Blackjack! Congratulations, you win :moneybag: Thanks for playing!**"
-				p.API.CreatePost(post)
+				if score < 21 {
+					post.Message = cardTxt
+					var attachmentMap map[string]interface{}
+					var result = "**Your score is " + strconv.Itoa(score) + ".**"
+					_ = json.Unmarshal([]byte(getAttachmentJSON(getPluginURL(p.GetSiteURL()), result)), &attachmentMap)
+					post.SetProps(attachmentMap)
+				} else {
+					post.Message = cardTxt + "\n**Blackjack! Congratulations, you win :moneybag: Thanks for playing!**"
+					gameOver = true
+				}
 			}
+		} else {
+			post.Message ="**To start a new game - `/blackjack`**"
 		}
+		_, _ = p.API.CreatePost(post)
 		break
 	case "/stay":
-		post.Message = "**Your final score is " + strconv.Itoa(score) + ". Thanks for playing!**"
-		p.API.CreatePost(post)
+		if !gameOver {
+			gameOver = true
+			post.Message = "**Your final score is " + strconv.Itoa(score) + ". Thanks for playing!**"
+		} else {
+			post.Message ="**To start a new game - `/blackjack`**"
+		}
+		_, _ = p.API.CreatePost(post)
 		break
 	}
 }
@@ -152,7 +161,7 @@ func calculateScore(dealtCards []string) int {
 		//adding ace value
 		for j := 0; j < aces; j++ {
 			score += 11
-			if score > 21 {
+			if score >= 21 {
 				score -= 10
 			}
 		}
@@ -161,6 +170,7 @@ func calculateScore(dealtCards []string) int {
 }
 
 func initPlayingDeck() {
+	gameOver = false
 	dealtCards = nil
 	cardTxt = ""
 	score = 0
@@ -186,7 +196,7 @@ func initPlayingDeck() {
 		"king_of_clubs"}
 }
 
-func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError){
+func (p *Plugin) ExecuteCommand(*plugin.Context, *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
 	initPlayingDeck()
 	rand.Seed(time.Now().UnixNano())
 	var result = ""
@@ -203,7 +213,11 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 	playingCards = append(playingCards[:card2Index], playingCards[card2Index+1:]...)
 
 	p.API.LogInfo("Dealt cards: ", dealtCards)
-	score = calculateScore(dealtCards)
+	score = cards[dealtCards[0]] + cards[dealtCards[1]]
+	if score == 22 {
+		//two aces in the first hand
+		score = 12
+	}
 
 	var pluginURL = getPluginURL(siteURL)
 	var imgURL = getImgURL(siteURL)
@@ -216,6 +230,7 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 	if score == 21 {
 		result = "\n**BlackJack! Congratulations, You win :moneybag: Thanks for playing!**"
 		cardTxt += result
+		gameOver = true
 	}
 
 	var cmdResp *model.CommandResponse
@@ -282,7 +297,7 @@ func createBJCommand(siteURL string) *model.Command {
 		Username:             bjBot,
 		AutoComplete:         true,
 		AutoCompleteDesc:     "Play Blackjack",
-		AutoCompleteHint:     "",
+		AutoCompleteHint:     "Get a score of 21 to win.",
 		DisplayName:          bjBot,
 		Description:          "Blackjack game for Mattermost",
 		URL:                  siteURL,
@@ -295,7 +310,7 @@ func (p *Plugin) setBotIcon() {
 		p.API.LogError("failed to get bundle path", err)
 	}
 
-	profileImage, err := ioutil.ReadFile(filepath.Join(bundlePath, "assets", "starter-template-icon.svg"))
+	profileImage, err := ioutil.ReadFile(filepath.Join(bundlePath, "assets", "ace_of_hearts.svg"))
 	if err != nil {
 		p.API.LogError("failed to read profile image", err)
 	}
