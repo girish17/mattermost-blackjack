@@ -1,6 +1,6 @@
 # mattermost-blackjack
 A simplified Blackjack game for [Mattermost](https://mattermost.org). Allows single player mode. The objective is to get a [Blackjack](https://en.wikipedia.org/wiki/Blackjack).
-Supports only `hit` and `stay` player decisions.
+Supports only `hit` and `stay` player decisions. Cards from a single deck of 52 cards is dealt during each game.
 ## Demo
 ![Demo video](public/blackjackDemo.gif) recorded using [Peek](https://github.com/phw/peek).
 ## Installation
