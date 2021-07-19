@@ -8,3 +8,5 @@ Supports only `hit` and `stay` player decisions. Cards from a single deck of 52 
 * Go to Mattermost System Console
 * Under Plugins, choose Upload Plugin and select the downloaded file
 * Enable the Blackjack plugin and try `/blackjack` command in a channel
+## Development Resources
+* To manually build and deploy this plugin on Mattermost server, follow this [document](https://developers.mattermost.com/extend/plugins/developer-setup/)
