@@ -34,4 +34,10 @@ func TestCalculateScore(t *testing.T)  {
 		t.Log("error should be 14, but got", res)
 		t.Fail()
 	}
+
+	cardsDealt = []string{"2_of_clubs", "6_of_clubs", "3_of_clubs", "2_of_hearts", "8_of_diamonds"}
+	if res := calculateScore(cardsDealt); res != 21 {
+		t.Log("error should be 21, but got", res)
+		t.Fail()
+	}
 }
