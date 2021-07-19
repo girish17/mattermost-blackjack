@@ -4,7 +4,7 @@ Supports only `hit` and `stay` player decisions. Cards from a single deck of 52 
 ## Demo
 ![Demo video](public/blackjackDemo.gif) recorded using [Peek](https://github.com/phw/peek).
 ## Installation
-* Download the plugin [here](https://github.com/girish17/mattermost-blackjack/releases/download/v1.0.0/com.girishm.mattermost-blackjack-1.0.0.tar.gz)
+* Download the plugin [here](https://github.com/girish17/mattermost-blackjack/releases/download/v1.0.1/com.girishm.mattermost-blackjack-1.0.0.tar.gz)
 * Go to Mattermost System Console
 * Under Plugins, choose Upload Plugin and select the downloaded file
 * Enable the Blackjack plugin and try `/blackjack` command in a channel
