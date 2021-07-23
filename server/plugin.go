@@ -18,9 +18,11 @@ import (
 	"fmt"
 	"github.com/mattermost/mattermost-server/v5/model"
 	"github.com/pkg/errors"
+	"image/jpeg"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -29,6 +31,7 @@ import (
 	"time"
 
 	"github.com/mattermost/mattermost-server/v5/plugin"
+	gim "github.com/ozankasikci/go-image-merge"
 )
 
 const bjCommand = "blackjack"
@@ -88,8 +91,16 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 	case "/hit":
 		if !gameOver {
 			var cardIndex = rand.Intn(len(playingCards))
+			bundlePath := p.getCardsAbsPath()
 			dealtCards = append(dealtCards, playingCards[cardIndex])
-			cardTxt += "!["+ playingCards[cardIndex] + "](" + getImgURL(p.GetSiteURL()) + playingCards[cardIndex] + ".jpg)"
+			newCardFilePath := filepath.Join(bundlePath, playingCards[cardIndex] + ".jpg")
+			bundledCardFilePath := filepath.Join(bundlePath, "mergedCard.jpg")
+			grids := []*gim.Grid{
+				{ImageFilePath: bundledCardFilePath},
+				{ImageFilePath: newCardFilePath},
+			}
+			p.mergeImg(grids, bundlePath)
+			cardTxt = "!["+ playingCards[cardIndex] + "](" + getImgURL(p.GetSiteURL()) + "mergedCard.jpg)"
 			//remove card from deck
 			playingCards = append(playingCards[:cardIndex], playingCards[cardIndex+1:]...)
 			p.API.LogInfo("Dealt cards: ", dealtCards)
@@ -223,8 +234,16 @@ func (p *Plugin) ExecuteCommand(*plugin.Context, *model.CommandArgs) (*model.Com
 	}
 
 	var pluginURL = getPluginURL(siteURL)
-	var imgURL = getImgURL(siteURL)
-	cardTxt = "!["+ dealtCards[0] + "](" + imgURL + dealtCards[0] + ".jpg)!["+ dealtCards[1] +"](" + imgURL + dealtCards[1] + ".jpg)"
+	path := p.getCardsAbsPath()
+	card1FilePath := filepath.Join(path, dealtCards[0] + ".jpg")
+	card2FilePath := filepath.Join(path, dealtCards[1] + ".jpg")
+	p.API.LogInfo("Card 1 path: ", card1FilePath, " Card 2 path: ", card2FilePath)
+	grids := []*gim.Grid{
+		{ImageFilePath: card1FilePath},
+		{ImageFilePath: card2FilePath},
+	}
+	p.mergeImg(grids, path)
+	cardTxt = "!["+ dealtCards[0] + " " + dealtCards[1] + "](" + getImgURL(siteURL) + "mergedCard.jpg)"
 
 	if score < 21 {
 		result = "**Your score is " + strconv.Itoa(score) + ".**"
@@ -325,5 +344,26 @@ func (p *Plugin) setBotIcon() {
 
 	if appErr := p.API.SetBotIconImage(user.UserId, profileImage); appErr != nil {
 		p.API.LogError("failed to set profile image", appErr)
+	}
+}
+
+func  (p *Plugin) getCardsAbsPath() string {
+	path, _ := p.API.GetBundlePath()
+	return filepath.Join(path, "/public/jpg-cards/")
+}
+
+func (p *Plugin) mergeImg(grids []*gim.Grid, path string) {
+	rgba, err := gim.New(grids, 2, 1).Merge()
+	p.API.LogInfo("Merged RGBA: ", rgba)
+	if err != nil {
+		// save the output to jpg
+		file, err2 := os.Create(path+"mergedCard.jpg") //TODO
+		if err2 != nil {
+			err2 = jpeg.Encode(file, rgba, &jpeg.Options{Quality: 80})
+		} else {
+			p.API.LogError("Error in jpeg encoding: ", err2)
+		}
+	} else {
+		p.API.LogError("Error in jpeg merging: ", err)
 	}
 }
