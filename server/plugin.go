@@ -164,7 +164,7 @@ func calculateScore(dealtCards []string) int {
 		//adding ace value
 		for j := 0; j < aces; j++ {
 			score += 11
-			if score >= 21 {
+			if score > 21 {
 				score -= 10
 			}
 		}
