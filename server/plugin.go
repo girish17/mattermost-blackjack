@@ -1,16 +1,16 @@
-//Copyright 2021 Girish M
+// Copyright 2021 Girish M
 //
-//Licensed under the Apache License, Version 2.0 (the "License");
-//you may not use this file except in compliance with the License.
-//You may obtain a copy of the License at
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-//http://www.apache.org/licenses/LICENSE-2.0
+// http://www.apache.org/licenses/LICENSE-2.0
 //
-//Unless required by applicable law or agreed to in writing, software
-//distributed under the License is distributed on an "AS IS" BASIS,
-//WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-//See the License for the specific language governing permissions and
-//limitations under the License.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 package main
 
 import (
@@ -33,14 +33,15 @@ import (
 
 const bjCommand = "blackjack"
 const bjBot = "blackjack-bot"
+
 var gameOver = false
 var bot = model.Bot{
-	Username:       bjBot,
-	DisplayName:    bjBot,
-	Description:    "Blackjack bot for Mattermost",
+	Username:    bjBot,
+	DisplayName: bjBot,
+	Description: "Blackjack bot for Mattermost",
 }
 
-var cards = map[string]int {"ace_of_hearts": 11, "2_of_hearts": 2, "3_of_hearts": 3, "4_of_hearts": 4, "5_of_hearts": 5,
+var cards = map[string]int{"ace_of_hearts": 11, "2_of_hearts": 2, "3_of_hearts": 3, "4_of_hearts": 4, "5_of_hearts": 5,
 	"6_of_hearts": 6, "7_of_hearts": 7, "8_of_hearts": 8, "9_of_hearts": 9, "10_of_hearts": 10,
 	"jack_of_hearts": 10, "queen_of_hearts": 10, "king_of_hearts": 10,
 	"ace_of_spades": 11, "2_of_spades": 2, "3_of_spades": 3, "4_of_spades": 4, "5_of_spades": 5,
@@ -81,7 +82,7 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 	p.API.LogInfo("Bot UserId for posting messages: ", user.Id)
 
 	post = &model.Post{
-		UserId: user.Id,
+		UserId:    user.Id,
 		ChannelId: jsonBody["channel_id"].(string),
 	}
 	switch path := r.URL.Path; path {
@@ -89,7 +90,7 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 		if !gameOver {
 			var cardIndex = rand.Intn(len(playingCards))
 			dealtCards = append(dealtCards, playingCards[cardIndex])
-			cardTxt += "!["+ playingCards[cardIndex] + "](" + getImgURL(p.GetSiteURL()) + playingCards[cardIndex] + ".jpg)"
+			cardTxt += "![" + playingCards[cardIndex] + "](" + getImgURL(p.GetSiteURL()) + playingCards[cardIndex] + ".jpg)"
 			//remove card from deck
 			playingCards = append(playingCards[:cardIndex], playingCards[cardIndex+1:]...)
 			p.API.LogInfo("Dealt cards: ", dealtCards)
@@ -106,21 +107,21 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 					_ = json.Unmarshal([]byte(getAttachmentJSON(getPluginURL(p.GetSiteURL()), result)), &attachmentMap)
 					post.SetProps(attachmentMap)
 				} else {
-					post.Message = cardTxt + "\n**Blackjack! Congratulations, you win :moneybag: Thanks for playing!**"
+					post.Message = cardTxt + "\n**Blackjack! Congratulations, you win :moneybag: Thanks for playing! Donations accepted on https://paypal.me/girishmodiletappa :wave:**"
 					gameOver = true
 				}
 			}
 		} else {
-			post.Message ="**To start a new game - `/blackjack`**"
+			post.Message = "**To start a new game - `/blackjack`**"
 		}
 		_, _ = p.API.CreatePost(post)
 		break
 	case "/stay":
 		if !gameOver {
 			gameOver = true
-			post.Message = "**Your final score is " + strconv.Itoa(score) + ". Thanks for playing!**"
+			post.Message = "**Your final score is " + strconv.Itoa(score) + ". Thanks for playing! Donations accepted on https://paypal.me/girishmodiletappa :wave:**"
 		} else {
-			post.Message ="**To start a new game - `/blackjack`**"
+			post.Message = "**To start a new game - `/blackjack`**"
 		}
 		_, _ = p.API.CreatePost(post)
 		break
@@ -152,7 +153,9 @@ func (p *Plugin) OnActivate() error {
 func calculateScore(dealtCards []string) int {
 	score = 0
 	aces := 0
+
 	sort.Strings(dealtCards)
+
 	for i := 0; i < len(dealtCards); i++ {
 		if strings.Contains(dealtCards[i], "ace") {
 			aces++
@@ -166,6 +169,8 @@ func calculateScore(dealtCards []string) int {
 			score += 11
 			if score > 21 {
 				score -= 10
+			} else if score == 21 && j < aces-1 {
+				score -= 10
 			}
 		}
 	}
@@ -177,7 +182,7 @@ func initPlayingDeck() {
 	dealtCards = nil
 	cardTxt = ""
 	score = 0
-	playingCards = []string {"ace_of_hearts", "2_of_hearts", "3_of_hearts",
+	playingCards = []string{"ace_of_hearts", "2_of_hearts", "3_of_hearts",
 		"4_of_hearts", "5_of_hearts", "6_of_hearts",
 		"7_of_hearts", "8_of_hearts", "9_of_hearts",
 		"10_of_hearts", "jack_of_hearts", "queen_of_hearts",
@@ -224,14 +229,14 @@ func (p *Plugin) ExecuteCommand(*plugin.Context, *model.CommandArgs) (*model.Com
 
 	var pluginURL = getPluginURL(siteURL)
 	var imgURL = getImgURL(siteURL)
-	cardTxt = "!["+ dealtCards[0] + "](" + imgURL + dealtCards[0] + ".jpg)!["+ dealtCards[1] +"](" + imgURL + dealtCards[1] + ".jpg)"
+	cardTxt = "![" + dealtCards[0] + "](" + imgURL + dealtCards[0] + ".jpg)![" + dealtCards[1] + "](" + imgURL + dealtCards[1] + ".jpg)"
 
 	if score < 21 {
 		result = "**Your score is " + strconv.Itoa(score) + ".**"
 		json.Unmarshal([]byte(getAttachmentJSON(pluginURL, result)), &attachmentMap)
 	}
 	if score == 21 {
-		result = "\n**BlackJack! Congratulations, You win :moneybag: Thanks for playing!**"
+		result = "\n**BlackJack! Congratulations, You win :moneybag: Thanks for playing! Donations accepted on https://paypal.me/girishmodiletappa :wave:**"
 		cardTxt += result
 		gameOver = true
 	}
@@ -239,9 +244,9 @@ func (p *Plugin) ExecuteCommand(*plugin.Context, *model.CommandArgs) (*model.Com
 	var cmdResp *model.CommandResponse
 	cmdResp = &model.CommandResponse{
 		ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL,
-		Text:  cardTxt,
-		Username: bjBot,
-		Props: attachmentMap,
+		Text:         cardTxt,
+		Username:     bjBot,
+		Props:        attachmentMap,
 	}
 	return cmdResp, nil
 }
@@ -295,15 +300,15 @@ func getImgURL(siteURL string) string {
 
 func createBJCommand(siteURL string) *model.Command {
 	return &model.Command{
-		Trigger:              bjCommand,
-		Method:               "POST",
-		Username:             bjBot,
-		AutoComplete:         true,
-		AutoCompleteDesc:     "Play Blackjack",
-		AutoCompleteHint:     "Get a score of 21 to win.",
-		DisplayName:          bjBot,
-		Description:          "Blackjack game for Mattermost",
-		URL:                  siteURL,
+		Trigger:          bjCommand,
+		Method:           "POST",
+		Username:         bjBot,
+		AutoComplete:     true,
+		AutoCompleteDesc: "Play Blackjack",
+		AutoCompleteHint: "Get a score of 21 to win.",
+		DisplayName:      bjBot,
+		Description:      "Blackjack game for Mattermost",
+		URL:              siteURL,
 	}
 }
 
