@@ -107,7 +107,7 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 					_ = json.Unmarshal([]byte(getAttachmentJSON(getPluginURL(p.GetSiteURL()), result)), &attachmentMap)
 					post.SetProps(attachmentMap)
 				} else {
-					post.Message = cardTxt + "\n**Blackjack! Congratulations, you win :moneybag: Thanks for playing! Donations accepted on https://paypal.me/girishm17 :wave:**"
+					post.Message = cardTxt + "\n**Blackjack! Congratulations, you win :moneybag: Thanks for playing!  :wave:**"
 					gameOver = true
 				}
 			}
@@ -119,7 +119,7 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 	case "/stay":
 		if !gameOver {
 			gameOver = true
-			post.Message = "**Your final score is " + strconv.Itoa(score) + ". Thanks for playing! Donations accepted on https://paypal.me/girishm17 :wave:**"
+			post.Message = "**Your final score is " + strconv.Itoa(score) + ". Thanks for playing!  :wave:**"
 		} else {
 			post.Message = "**To start a new game - `/blackjack`**"
 		}
@@ -236,7 +236,7 @@ func (p *Plugin) ExecuteCommand(*plugin.Context, *model.CommandArgs) (*model.Com
 		json.Unmarshal([]byte(getAttachmentJSON(pluginURL, result)), &attachmentMap)
 	}
 	if score == 21 {
-		result = "\n**BlackJack! Congratulations, You win :moneybag: Thanks for playing! Donations accepted on https://paypal.me/girishm17 :wave:**"
+		result = "\n**BlackJack! Congratulations, You win :moneybag: Thanks for playing!  :wave:**"
 		cardTxt += result
 		gameOver = true
 	}
