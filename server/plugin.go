@@ -60,6 +60,10 @@ var dealtCards []string
 var cardTxt = ""
 var score = 0
 
+var dealerCards []string
+var dealerCardTxt = ""
+var dealerScore = 0
+
 // Plugin implements the interface expected by the Mattermost server to communicate between the server and plugin processes.
 type Plugin struct {
 	plugin.MattermostPlugin
@@ -107,8 +111,12 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 					_ = json.Unmarshal([]byte(getAttachmentJSON(getPluginURL(p.GetSiteURL()), result)), &attachmentMap)
 					post.SetProps(attachmentMap)
 				} else {
-					post.Message = cardTxt + "\n**Blackjack! Congratulations, you win :moneybag: Thanks for playing!  :wave:**"
+					dealerTurn(p)
 					gameOver = true
+					winner := determineWinner()
+					post.Message = "**Your hand: Blackjack!**\n" + cardTxt +
+						"\n\n**Dealer's hand: " + strconv.Itoa(calculateHandScore(dealerCards)) + "**\n" + dealerCardTxt +
+						"\n\n**" + winner + "**\n\nThanks for playing! :wave:"
 				}
 			}
 		} else {
@@ -118,8 +126,12 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 		break
 	case "/stay":
 		if !gameOver {
+			dealerTurn(p)
 			gameOver = true
-			post.Message = "**Your final score is " + strconv.Itoa(score) + ". Thanks for playing!  :wave:**"
+			winner := determineWinner()
+			post.Message = "**Your hand: " + strconv.Itoa(calculateHandScore(dealtCards)) + "**\n" + cardTxt +
+				"\n\n**Dealer's hand: " + strconv.Itoa(dealerScore) + "**\n" + dealerCardTxt +
+				"\n\n**" + winner + "**\n\nThanks for playing! :wave:"
 		} else {
 			post.Message = "**To start a new game - `/blackjack`**"
 		}
@@ -177,11 +189,80 @@ func calculateScore(dealtCards []string) int {
 	return score
 }
 
+func calculateHandScore(hand []string) int {
+	handScore := 0
+	aces := 0
+
+	sort.Strings(hand)
+
+	for i := 0; i < len(hand); i++ {
+		if strings.Contains(hand[i], "ace") {
+			aces++
+		} else {
+			handScore += cards[hand[i]]
+		}
+	}
+	if aces > 0 {
+		//adding ace value
+		for j := 0; j < aces; j++ {
+			handScore += 11
+			if handScore > 21 {
+				handScore -= 10
+			} else if handScore == 21 && j < aces-1 {
+				handScore -= 10
+			}
+		}
+	}
+	return handScore
+}
+
+func dealerTurn(p *Plugin) {
+	dealerScore = calculateHandScore(dealerCards)
+
+	for dealerScore < 18 {
+		var cardIndex = rand.Intn(len(playingCards))
+		dealerCards = append(dealerCards, playingCards[cardIndex])
+		playingCards = append(playingCards[:cardIndex], playingCards[cardIndex+1:]...)
+		dealerScore = calculateHandScore(dealerCards)
+	}
+
+	var imgURL = getImgURL(p.GetSiteURL())
+	dealerCardTxt = ""
+	for i := 0; i < len(dealerCards); i++ {
+		dealerCardTxt += "![" + dealerCards[i] + "](" + imgURL + dealerCards[i] + ".jpg)"
+	}
+}
+
+func determineWinner() string {
+	playerScore := calculateHandScore(dealtCards)
+
+	if playerScore > 21 {
+		return "Bust! Dealer wins :disappointed:"
+	}
+
+	if dealerScore > 21 {
+		return "Dealer bust! You win :moneybag:"
+	}
+
+	if playerScore > dealerScore {
+		return "You win :moneybag:"
+	}
+
+	if dealerScore > playerScore {
+		return "Dealer wins :disappointed:"
+	}
+
+	return "Push! It's a tie :handshake:"
+}
+
 func initPlayingDeck() {
 	gameOver = false
 	dealtCards = nil
 	cardTxt = ""
 	score = 0
+	dealerCards = nil
+	dealerCardTxt = ""
+	dealerScore = 0
 	playingCards = []string{"ace_of_hearts", "2_of_hearts", "3_of_hearts",
 		"4_of_hearts", "5_of_hearts", "6_of_hearts",
 		"7_of_hearts", "8_of_hearts", "9_of_hearts",
@@ -210,6 +291,8 @@ func (p *Plugin) ExecuteCommand(*plugin.Context, *model.CommandArgs) (*model.Com
 	var result = ""
 	var siteURL = p.GetSiteURL()
 	var attachmentMap map[string]interface{} = nil
+
+	// Deal player cards
 	var card1Index = rand.Intn(len(playingCards))
 	dealtCards = append(dealtCards, playingCards[card1Index])
 	//removing dealt cards from the playing deck
@@ -220,12 +303,17 @@ func (p *Plugin) ExecuteCommand(*plugin.Context, *model.CommandArgs) (*model.Com
 	//removing dealt cards from the playing deck
 	playingCards = append(playingCards[:card2Index], playingCards[card2Index+1:]...)
 
+	// Deal dealer cards (initially hidden)
+	var dealerCard1Index = rand.Intn(len(playingCards))
+	dealerCards = append(dealerCards, playingCards[dealerCard1Index])
+	playingCards = append(playingCards[:dealerCard1Index], playingCards[dealerCard1Index+1:]...)
+
+	var dealerCard2Index = rand.Intn(len(playingCards))
+	dealerCards = append(dealerCards, playingCards[dealerCard2Index])
+	playingCards = append(playingCards[:dealerCard2Index], playingCards[dealerCard2Index+1:]...)
+
 	p.API.LogInfo("Dealt cards: ", dealtCards)
-	score = cards[dealtCards[0]] + cards[dealtCards[1]]
-	if score == 22 {
-		//two aces in the first hand
-		score = 12
-	}
+	score = calculateHandScore(dealtCards)
 
 	var pluginURL = getPluginURL(siteURL)
 	var imgURL = getImgURL(siteURL)
@@ -236,9 +324,16 @@ func (p *Plugin) ExecuteCommand(*plugin.Context, *model.CommandArgs) (*model.Com
 		json.Unmarshal([]byte(getAttachmentJSON(pluginURL, result)), &attachmentMap)
 	}
 	if score == 21 {
-		result = "\n**BlackJack! Congratulations, You win :moneybag: Thanks for playing!  :wave:**"
-		cardTxt += result
+		dealerTurn(p)
 		gameOver = true
+		winner := determineWinner()
+		result = "**Your hand: Blackjack!**\n" + cardTxt +
+			"\n\n**Dealer's hand: " + strconv.Itoa(dealerScore) + "**\n"
+		for i := 0; i < len(dealerCards); i++ {
+			result += "![" + dealerCards[i] + "](" + imgURL + dealerCards[i] + ".jpg)"
+		}
+		result += "\n\n**" + winner + "**\n\nThanks for playing! :wave:"
+		cardTxt = result
 	}
 
 	var cmdResp *model.CommandResponse
