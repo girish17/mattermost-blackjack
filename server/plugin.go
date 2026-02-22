@@ -14,10 +14,13 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/mattermost/mattermost-server/v5/model"
-	"github.com/pkg/errors"
+	"image"
+	"image/draw"
+	"image/jpeg"
+	_ "image/jpeg"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -28,7 +31,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mattermost/mattermost-server/v5/model"
 	"github.com/mattermost/mattermost-server/v5/plugin"
+	"github.com/pkg/errors"
 )
 
 const bjCommand = "blackjack"
@@ -79,23 +84,54 @@ type Plugin struct {
 // ServeHTTP demonstrates a plugin that handles HTTP requests by greeting the world.
 func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Request) {
 	var post *model.Post
-	body, _ := ioutil.ReadAll(r.Body)
-	var jsonBody map[string]interface{}
-	_ = json.Unmarshal(body, &jsonBody)
+
 	user, _ := p.API.GetUserByUsername(bjBot)
 	p.API.LogInfo("Bot UserId for posting messages: ", user.Id)
 
+	var channelId string
+
+	body, _ := ioutil.ReadAll(r.Body)
+	contentType := r.Header.Get("Content-Type")
+
+	if strings.Contains(contentType, "application/json") {
+		var jsonBody map[string]interface{}
+		_ = json.Unmarshal(body, &jsonBody)
+		if c, ok := jsonBody["channel_id"]; ok {
+			channelId = c.(string)
+		}
+		if ctx, ok := jsonBody["context"]; ok {
+			if c, ok := ctx.(map[string]interface{})["channel_id"]; ok {
+				channelId = c.(string)
+			}
+		}
+	} else {
+		r.Body = ioutil.NopCloser(bytes.NewBuffer(body))
+		r.ParseForm()
+		if len(r.Form["channel_id"]) > 0 {
+			channelId = r.Form["channel_id"][0]
+		}
+		if len(r.Form["context"]) > 0 {
+			var ctx map[string]interface{}
+			_ = json.Unmarshal([]byte(r.Form["context"][0]), &ctx)
+			if c, ok := ctx["channel_id"]; ok {
+				channelId = c.(string)
+			}
+		}
+	}
+
+	p.API.LogInfo("Channel ID from request: ", channelId)
+
 	post = &model.Post{
 		UserId:    user.Id,
-		ChannelId: jsonBody["channel_id"].(string),
+		ChannelId: channelId,
 	}
 	switch path := r.URL.Path; path {
 	case "/hit":
 		if !gameOver {
 			var cardIndex = rand.Intn(len(playingCards))
 			dealtCards = append(dealtCards, playingCards[cardIndex])
-			cardTxt += "![" + playingCards[cardIndex] + "](" + getImgURL(p.GetSiteURL()) + playingCards[cardIndex] + ".jpg)"
-			//remove card from deck
+			cardTxt = "![" + strings.Join(dealtCards, ",") + "](" + getPluginURL(p.GetSiteURL()) + "/combined?cards=" + strings.Join(dealtCards, ",") + ")"
+			// remove card from deck
 			playingCards = append(playingCards[:cardIndex], playingCards[cardIndex+1:]...)
 			p.API.LogInfo("Dealt cards: ", dealtCards)
 			score = calculateScore(dealtCards)
@@ -114,8 +150,12 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 					dealerTurn(p)
 					gameOver = true
 					winner := determineWinner()
+					dealerHandLabel := strconv.Itoa(calculateHandScore(dealerCards))
+					if calculateHandScore(dealerCards) == 21 {
+						dealerHandLabel = "Blackjack!"
+					}
 					post.Message = "**Your hand: Blackjack!**\n" + cardTxt +
-						"\n\n**Dealer's hand: " + strconv.Itoa(calculateHandScore(dealerCards)) + "**\n" + dealerCardTxt +
+						"\n\n**Dealer's hand: " + dealerHandLabel + "**\n" + dealerCardTxt +
 						"\n\n**" + winner + "**\n\nThanks for playing! :wave:"
 				}
 			}
@@ -129,14 +169,53 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 			dealerTurn(p)
 			gameOver = true
 			winner := determineWinner()
-			post.Message = "**Your hand: " + strconv.Itoa(calculateHandScore(dealtCards)) + "**\n" + cardTxt +
-				"\n\n**Dealer's hand: " + strconv.Itoa(dealerScore) + "**\n" + dealerCardTxt +
+			playerHandLabel := strconv.Itoa(calculateHandScore(dealtCards))
+			if calculateHandScore(dealtCards) == 21 {
+				playerHandLabel = "Blackjack!"
+			}
+			dealerHandLabel := strconv.Itoa(dealerScore)
+			if dealerScore == 21 {
+				dealerHandLabel = "Blackjack!"
+			}
+			post.Message = "**Your hand: " + playerHandLabel + "**\n" + cardTxt +
+				"\n\n**Dealer's hand: " + dealerHandLabel + "**\n" + dealerCardTxt +
 				"\n\n**" + winner + "**\n\nThanks for playing! :wave:"
 		} else {
 			post.Message = "**To start a new game - `/blackjack`**"
 		}
 		_, _ = p.API.CreatePost(post)
 		break
+	case "/combined":
+		cards := r.URL.Query()["cards"]
+		if len(cards) > 0 {
+			cardList := strings.Split(cards[0], ",")
+			img, err := combineCards(cardList, p.GetSiteURL())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "image/jpeg")
+			jpeg.Encode(w, img, &jpeg.Options{Quality: 90})
+		}
+		return
+	case "/cards":
+		cardName := r.URL.Query().Get("card")
+		if cardName != "" {
+			bundlePath, err := p.API.GetBundlePath()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			imgPath := filepath.Join(bundlePath, "public", "jpg-cards", cardName+".jpg")
+			imgData, err := ioutil.ReadFile(imgPath)
+			if err != nil {
+				http.Error(w, "Card not found", http.StatusNotFound)
+				return
+			}
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.Write(imgData)
+		}
+		return
 	default:
 		fmt.Fprintf(w, "Welcome to Blackjack!")
 	}
@@ -226,11 +305,8 @@ func dealerTurn(p *Plugin) {
 		dealerScore = calculateHandScore(dealerCards)
 	}
 
-	var imgURL = getImgURL(p.GetSiteURL())
-	dealerCardTxt = ""
-	for i := 0; i < len(dealerCards); i++ {
-		dealerCardTxt += "![" + dealerCards[i] + "](" + imgURL + dealerCards[i] + ".jpg)"
-	}
+	var pluginURL = getPluginURL(p.GetSiteURL())
+	dealerCardTxt = "![" + strings.Join(dealerCards, ",") + "](" + pluginURL + "/combined?cards=" + strings.Join(dealerCards, ",") + ")"
 }
 
 func determineWinner() string {
@@ -316,8 +392,7 @@ func (p *Plugin) ExecuteCommand(*plugin.Context, *model.CommandArgs) (*model.Com
 	score = calculateHandScore(dealtCards)
 
 	var pluginURL = getPluginURL(siteURL)
-	var imgURL = getImgURL(siteURL)
-	cardTxt = "![" + dealtCards[0] + "](" + imgURL + dealtCards[0] + ".jpg)![" + dealtCards[1] + "](" + imgURL + dealtCards[1] + ".jpg)"
+	cardTxt = "![" + strings.Join(dealtCards, ",") + "](" + pluginURL + "/combined?cards=" + strings.Join(dealtCards, ",") + ")"
 
 	if score < 21 {
 		result = "**Your score is " + strconv.Itoa(score) + ".**"
@@ -327,12 +402,14 @@ func (p *Plugin) ExecuteCommand(*plugin.Context, *model.CommandArgs) (*model.Com
 		dealerTurn(p)
 		gameOver = true
 		winner := determineWinner()
-		result = "**Your hand: Blackjack!**\n" + cardTxt +
-			"\n\n**Dealer's hand: " + strconv.Itoa(dealerScore) + "**\n"
-		for i := 0; i < len(dealerCards); i++ {
-			result += "![" + dealerCards[i] + "](" + imgURL + dealerCards[i] + ".jpg)"
+		dealerHandLabel := strconv.Itoa(dealerScore)
+		if dealerScore == 21 {
+			dealerHandLabel = "Blackjack!"
 		}
-		result += "\n\n**" + winner + "**\n\nThanks for playing! :wave:"
+		result = "**Your hand: Blackjack!**\n" + cardTxt +
+			"\n\n**Dealer's hand: " + dealerHandLabel + "**\n" +
+			"![" + strings.Join(dealerCards, ",") + "](" + pluginURL + "/combined?cards=" + strings.Join(dealerCards, ",") + ")" +
+			"\n\n**" + winner + "**\n\nThanks for playing! :wave:"
 		cardTxt = result
 	}
 
@@ -391,6 +468,33 @@ func getPluginURL(siteURL string) string {
 
 func getImgURL(siteURL string) string {
 	return siteURL + "/plugins/com.girishm.mattermost-blackjack/public/jpg-cards/"
+}
+
+func combineCards(cardNames []string, siteURL string) (image.Image, error) {
+	cardWidth := 70
+	cardHeight := 100
+
+	totalWidth := len(cardNames) * cardWidth
+	result := image.NewRGBA(image.Rect(0, 0, totalWidth, cardHeight))
+	pluginBaseURL := getPluginURL(siteURL)
+
+	for i, cardName := range cardNames {
+		resp, err := http.Get(pluginBaseURL + "/cards?card=" + cardName)
+		if err != nil {
+			continue
+		}
+		img, _, err := image.Decode(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			continue
+		}
+
+		srcRect := img.Bounds()
+		dstRect := image.Rect(i*cardWidth, 0, (i+1)*cardWidth, cardHeight)
+		draw.Draw(result, dstRect, img, srcRect.Min, draw.Src)
+	}
+
+	return result, nil
 }
 
 func createBJCommand(siteURL string) *model.Command {
